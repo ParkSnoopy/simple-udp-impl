@@ -1,10 +1,16 @@
-use std::{ net, io, fmt, env };
+#![no_std]
+
+use core::{ net, fmt, env };
+
+use log::*;
+use heapless::*;
+use anyhow::{ Result, anyhow };
 
 const BUFFER_INIT_VALUE_U8: u8 = 0;
 const BUFFER_INIT_VALUE_CHAR: char = '\0';
 
 
-fn main() -> io::Result<()> {
+fn main() -> Result<()> {
     const FALLBACK_ARGV: &str = "__RANDOM_STRING_THAT_NEVER_MATCH_TO_MODE__";
 
     let mut args = env::args().skip(1);
@@ -27,27 +33,27 @@ fn main() -> io::Result<()> {
 }
 
 fn help() {
-    println!();
-    println!("[  INIT  ] Failed to parse command line arguments.");
-    println!();
-    println!("  myftp-rs <mode> <address>");
-    println!();
-    println!("    mode    : execution mode (server, client)");
-    println!("    address : socket address to bind (e.g. '127.0.0.1:8000')");
-    println!();
+    info!("");
+    info!("[  INIT  ] Failed to parse command line arguments.");
+    info!("");
+    info!("  myftp-rs <mode> <address>");
+    info!("");
+    info!("    mode    : execution mode (server, client)");
+    info!("    address : socket address to bind (e.g. '127.0.0.1:8000')");
+    info!("");
 }
 
-fn bind_server<I>(address: I) -> io::Result<net::UdpSocket>
+fn bind_server<I>(address: I) -> Result<net::UdpSocket>
 where I: net::ToSocketAddrs + fmt::Debug
 {
     let socket = net::UdpSocket::bind(&address)?;
-    println!("[ SERVER ] Server established on `{:?}`", &address);
+    info!("[ SERVER ] Server established on `{:?}`", &address);
 
     Ok(socket)
 }
 
 #[allow(unreachable_code)]
-fn loop_server<I>(address: I) -> io::Result<()>
+fn loop_server<I>(address: I) -> Result<()>
 where I: net::ToSocketAddrs + fmt::Debug
 {
     let server = bind_server(address)?;
@@ -59,16 +65,16 @@ where I: net::ToSocketAddrs + fmt::Debug
         // Server Receives
         let (rx_bytes, source) = server.recv_from(&mut buffer)?;
         let body = String::from_utf8_lossy(&buffer).trim_end_matches(BUFFER_INIT_VALUE_CHAR).to_owned();
-        println!();
-        println!("[ SERVER ] Message received! ({:?} Bytes)", &rx_bytes);
-        println!("[ SERVER ]   FROM: {:?}", &source);
-        println!("[ SERVER ]   BODY:");
-        println!("{}", &body);
+        info!("");
+        info!("[ SERVER ] Message received! ({:?} Bytes)", &rx_bytes);
+        info!("[ SERVER ]   FROM: {:?}", &source);
+        info!("[ SERVER ]   BODY:");
+        info!("{}", &body);
 
         // Server Answers
         let answer = make_server_answer(&buffer, &source, &rx_bytes);
         let tx_bytes = server.send_to(&answer, &source)?;
-        println!("[ SERVER ] Answer sent! ({:?} Bytes)", &tx_bytes);
+        info!("[ SERVER ] Answer sent! ({:?} Bytes)", &tx_bytes);
     }
 
     Ok(())
@@ -93,13 +99,13 @@ struct Client {
 }
 
 impl Client {
-    fn connect<I>(server_addr: I) -> io::Result<Self>
+    fn connect<I>(server_addr: I) -> Result<Self>
     where I: net::ToSocketAddrs + fmt::Debug
     {
         const DEFAULT_BIND_SELF: &str = "0.0.0.0:0";
 
         let client = net::UdpSocket::bind(DEFAULT_BIND_SELF)?;
-        println!("[ CLIENT ] Client established on `{:?}`", &DEFAULT_BIND_SELF);
+        info!("[ CLIENT ] Client established on `{:?}`", &DEFAULT_BIND_SELF);
 
         let server = {
             let parsed: Vec<net::SocketAddr> = server_addr
@@ -107,9 +113,9 @@ impl Client {
                 .collect();
 
             if parsed.len() < 1 {
-                return Err(io::Error::new(io::ErrorKind::Other, "Invalid socket address input"));
+                return Err(anyhow!("Invalid socket address input"));
             } else if parsed.len() > 1 {
-                return Err(io::Error::new(io::ErrorKind::Other, "This program only support single socket per client"));
+                return Err(anyhow!("This program only support single socket per client"));
             }
 
             // SAFE: Length of `parsed` is verified to be `1`
@@ -122,17 +128,17 @@ impl Client {
         })
     }
 
-    fn send(&self, msg: &[u8]) -> io::Result<usize> {
+    fn send(&self, msg: &[u8]) -> Result<usize> {
         self.client.send_to(msg, self.server)
     }
 
-    fn recv(&self, buffer: &mut [u8]) -> io::Result<usize> {
+    fn recv(&self, buffer: &mut [u8]) -> Result<usize> {
         self.client.recv(buffer)
     }
 }
 
 #[allow(unreachable_code)]
-fn loop_client<I>(address: I) -> io::Result<()>
+fn loop_client<I>(address: I) -> Result<()>
 where I: net::ToSocketAddrs + fmt::Debug
 {
     let client = Client::connect(address)?;
@@ -150,15 +156,15 @@ where I: net::ToSocketAddrs + fmt::Debug
 
         // Client Requests
         let tx_bytes = client.send(&request)?;
-        println!("[ CLIENT ] Request sent! ({:?} Bytes)", &tx_bytes);
+        info!("[ CLIENT ] Request sent! ({:?} Bytes)", &tx_bytes);
 
         // Client Receives
         let rx_bytes = client.recv(&mut rx_buf)?;
         let rx_body = String::from_utf8_lossy(&rx_buf).trim_end_matches(BUFFER_INIT_VALUE_CHAR).to_owned();
-        println!();
-        println!("[ CLIENT ] Message received! ({:?} Bytes)", &rx_bytes);
-        println!("[ CLIENT ]   BODY:");
-        println!("{}", &rx_body);
+        info!("");
+        info!("[ CLIENT ] Message received! ({:?} Bytes)", &rx_bytes);
+        info!("[ CLIENT ]   BODY:");
+        info!("{}", &rx_body);
     }
 
     Ok(())
